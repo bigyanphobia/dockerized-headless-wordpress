@@ -1,0 +1,49 @@
+name: Deploy to LAN Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Load SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Sync wp-content to server
+        run: |
+          rsync -av --delete \
+            -e "ssh -p 2222 -o StrictHostKeyChecking=no" \
+            ./wp-content/ \
+            bigyan@100.104.235.63:/home/bigyan/wordpress/wp-content/
+
+      - name: Pull latest docker config
+        run: |
+          ssh -p 2222 -o StrictHostKeyChecking=no bigyan@100.104.235.63 \
+            "cd ~/wordpress && git pull origin main"
+
+      - name: Restart WordPress container
+        run: |
+          ssh -p 2222 -o StrictHostKeyChecking=no bigyan@100.104.235.63 \
+            "cd ~/wordpress && docker compose restart wordpress"
+
+      - name: Verify stack is running
+        run: |
+          ssh -p 2222 -o StrictHostKeyChecking=no bigyan@100.104.235.63 \
+            "docker compose -f ~/wordpress/docker-compose.yml ps"
