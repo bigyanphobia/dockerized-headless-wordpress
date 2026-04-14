@@ -35,10 +35,24 @@ jobs:
           EOF
           chmod 600 ~/.ssh/config
 
+      - name: Install rsync
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rsync openssh-client
+          rsync --version
+          which rsync
+
+      - name: Test Tailscale + SSH connectivity
+        run: |
+          echo "Tailscale status:"
+          tailscale status
+          echo "Pinging server:"
+          ping -c 3 100.104.235.63 || echo "ping failed"
+          echo "Testing SSH:"
+          ssh lan-server "echo SSH_OK"
+
       - name: Sync and deploy
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y rsync openssh-client
           rsync -av --delete ./wp-content/ lan-server:/home/bigyan/wordpress/wp-content/
           ssh lan-server "cd ~/wordpress && git pull origin main"
           ssh lan-server "cd ~/wordpress && docker compose restart wordpress"
