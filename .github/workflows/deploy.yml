@@ -20,40 +20,30 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
 
-      - name: Configure SSH
+      - name: Load SSH key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          cat >> ~/.ssh/config <<'EOF'
-          Host lan-server
-            HostName 100.104.235.63
-            User bigyan
-            Port 2222
-            IdentityFile ~/.ssh/id_ed25519
-            StrictHostKeyChecking no
-          EOF
-          chmod 600 ~/.ssh/config
 
-      - name: Install rsync
+      - name: Sync wp-content to server
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends rsync openssh-client
-          rsync --version
-          which rsync
+          rsync -av --delete \
+            -e "ssh -p 2222 -o StrictHostKeyChecking=no" \
+            ./wp-content/ \
+            bigyan@100.104.235.63:/home/bigyan/wordpress/wp-content/
 
-      - name: Test Tailscale + SSH connectivity
+      - name: Pull latest docker config
         run: |
-          echo "Tailscale status:"
-          tailscale status
-          echo "Pinging server:"
-          ping -c 3 100.104.235.63 || echo "ping failed"
-          echo "Testing SSH:"
-          ssh lan-server "echo SSH_OK"
+          ssh -p 2222 -o StrictHostKeyChecking=no bigyan@100.104.235.63 \
+            "cd ~/wordpress && git pull origin main"
 
-      - name: Sync and deploy
+      - name: Restart WordPress container
         run: |
-          rsync -av --delete ./wp-content/ lan-server:/home/bigyan/wordpress/wp-content/
-          ssh lan-server "cd ~/wordpress && git pull origin main"
-          ssh lan-server "cd ~/wordpress && docker compose restart wordpress"
-          ssh lan-server "docker compose -f ~/wordpress/docker-compose.yml ps"
+          ssh -p 2222 -o StrictHostKeyChecking=no bigyan@100.104.235.63 \
+            "cd ~/wordpress && docker compose restart wordpress"
+
+      - name: Verify stack is running
+        run: |
+          ssh -p 2222 -o StrictHostKeyChecking=no bigyan@100.104.235.63 \
+            "docker compose -f ~/wordpress/docker-compose.yml ps"
