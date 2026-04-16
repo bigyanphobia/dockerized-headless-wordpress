@@ -1,9 +1,8 @@
-name: Deploy to LAN Server
+name: Deploy to Toshiba Server
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   deploy:
@@ -12,6 +11,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Important for proper git history
 
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
@@ -20,7 +21,7 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
 
-      - name: Configure SSH
+      - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
@@ -35,17 +36,18 @@ jobs:
           EOF
           chmod 600 ~/.ssh/config
 
-      - name: Sync wp-content to server
+      - name: Deploy to Server
         run: |
-          sudo apt-get install -y rsync
-          rsync -av --delete ./wp-content/ lan-server:/home/bigyan/wordpress/wp-content/
+          ssh lan-server "cd ~/wordpress && git fetch origin && git reset --hard origin/main"
 
-      - name: Deploy on server
-        run: |
-          ssh lan-server "cd ~/wordpress && git pull origin main"
+          # Optional but recommended: Clear some caches before restart
+          ssh lan-server "cd ~/wordpress && rm -rf wp-content/cache/* || true"
+
+          # Restart Docker services
           ssh lan-server "cd ~/wordpress && docker compose pull"
-          ssh lan-server "cd ~/wordpress && docker compose up -d --remove-orphans"
+          ssh lan-server "cd ~/wordpress && docker compose up -d --remove-orphans --force-recreate"
 
-      - name: Verify stack is running
+      - name: Verify deployment
         run: |
           ssh lan-server "docker compose -f ~/wordpress/docker-compose.yml ps"
+          ssh lan-server "docker compose -f ~/wordpress/docker-compose.yml logs --tail=20"
