@@ -10,3 +10,4 @@
 wp-content/uploads/
 .DS_Store
 Thumbs.db
+docker-compose.override.yml
